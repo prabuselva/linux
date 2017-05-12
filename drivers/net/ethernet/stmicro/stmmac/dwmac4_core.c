@@ -801,9 +801,6 @@ struct mac_device_info *dwmac4_setup(void __iomem *ioaddr, int mcbins,
 	if (mac->multicast_filter_bins)
 		mac->mcast_bits_log2 = ilog2(mac->multicast_filter_bins);
 
-	mac->link.port = GMAC_CONFIG_PS;
-	mac->link.duplex = GMAC_CONFIG_DM;
-	mac->link.speed = GMAC_CONFIG_FES;
 	mac->mii.addr = GMAC_MDIO_ADDR;
 	mac->mii.data = GMAC_MDIO_DATA;
 	mac->mii.addr_shift = 21;

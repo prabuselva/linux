@@ -551,12 +551,6 @@ struct stmmac_hwtimestamp {
 extern const struct stmmac_hwtimestamp stmmac_ptp;
 extern const struct stmmac_mode_ops dwmac4_ring_mode_ops;
 
-struct mac_link {
-	int port;
-	int duplex;
-	int speed;
-};
-
 struct mii_regs {
 	unsigned int addr;	/* MII Address */
 	unsigned int data;	/* MII Data */
@@ -587,7 +581,6 @@ struct mac_device_info {
 	const struct stmmac_mode_ops *mode;
 	const struct stmmac_hwtimestamp *ptp;
 	struct mii_regs mii;	/* MII register Addresses */
-	struct mac_link link;
 	void __iomem *pcsr;     /* vpointer to device CSRs */
 	int multicast_filter_bins;
 	int unicast_filter_entries;
