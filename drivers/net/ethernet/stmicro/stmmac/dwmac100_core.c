@@ -27,6 +27,7 @@
 #include <linux/crc32.h>
 #include <asm/io.h>
 #include "dwmac100.h"
+#include "stmmac.h"
 
 static void dwmac100_core_init(struct mac_device_info *hw, int mtu)
 {
@@ -38,6 +39,50 @@ static void dwmac100_core_init(struct mac_device_info *hw, int mtu)
 #ifdef STMMAC_VLAN_TAG_USED
 	writel(ETH_P_8021Q, ioaddr + MAC_VLAN1);
 #endif
+}
+
+static int dwmac100_adjust_link(struct stmmac_priv *priv)
+{
+	struct net_device *ndev = priv->dev;
+	struct phy_device *phydev = ndev->phydev;
+	int new_state = 0;
+	u32 tx_cnt = priv->plat->tx_queues_to_use;
+	u32 ctrl;
+
+	ctrl = readl(priv->ioaddr + MAC_CTRL_REG);
+	if (phydev->duplex != priv->oldduplex) {
+		new_state = 1;
+		if (!(phydev->duplex))
+			ctrl &= ~MAC_CONTROL_F;
+		else
+			ctrl |= MAC_CONTROL_F;
+		priv->oldduplex = phydev->duplex;
+	}
+
+	if (phydev->pause)
+		priv->hw->mac->flow_ctrl(priv->hw, phydev->duplex, priv->flow_ctrl,
+				priv->pause, tx_cnt);
+
+	if (phydev->speed != priv->speed) {
+		new_state = 1;
+		switch (phydev->speed) {
+		case 100:
+		case 10:
+			ctrl &= ~MAC_CONTROL_PS;
+			break;
+		default:
+			netif_warn(priv, link, priv->dev,
+					"broken speed: %d\n", phydev->speed);
+			phydev->speed = SPEED_UNKNOWN;
+			break;
+		}
+		if (phydev->speed != SPEED_UNKNOWN && likely(priv->plat->fix_mac_speed))
+			priv->plat->fix_mac_speed(priv->plat->bsp_priv, phydev->speed);
+		priv->speed = phydev->speed;
+	}
+
+	writel(ctrl, priv->ioaddr + MAC_CTRL_REG);
+	return new_state;
 }
 
 static void dwmac100_dump_mac_regs(struct mac_device_info *hw, u32 *reg_space)
@@ -150,6 +195,7 @@ static void dwmac100_pmt(struct mac_device_info *hw, unsigned long mode)
 
 static const struct stmmac_ops dwmac100_ops = {
 	.core_init = dwmac100_core_init,
+	.adjust_link = dwmac100_adjust_link,
 	.set_mac = stmmac_set_mac,
 	.rx_ipc = dwmac100_rx_ipc_enable,
 	.dump_regs = dwmac100_dump_mac_regs,

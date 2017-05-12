@@ -275,21 +275,6 @@ static inline u32 stmmac_rx_dirty(struct stmmac_priv *priv, u32 queue)
 }
 
 /**
- * stmmac_hw_fix_mac_speed - callback for speed selection
- * @priv: driver private structure
- * Description: on some platforms (e.g. ST), some HW system configuration
- * registers have to be set according to the link speed negotiated.
- */
-static inline void stmmac_hw_fix_mac_speed(struct stmmac_priv *priv)
-{
-	struct net_device *ndev = priv->dev;
-	struct phy_device *phydev = ndev->phydev;
-
-	if (likely(priv->plat->fix_mac_speed))
-		priv->plat->fix_mac_speed(priv->plat->bsp_priv, phydev->speed);
-}
-
-/**
  * stmmac_enable_eee_mode - check and enter in LPI mode
  * @priv: driver private structure
  * Description: this function is to verify and enter in LPI mode in case of
@@ -748,19 +733,6 @@ static void stmmac_release_ptp(struct stmmac_priv *priv)
 }
 
 /**
- *  stmmac_mac_flow_ctrl - Configure flow control in all queues
- *  @priv: driver private structure
- *  Description: It is used for configuring the flow control in all queues
- */
-static void stmmac_mac_flow_ctrl(struct stmmac_priv *priv, u32 duplex)
-{
-	u32 tx_cnt = priv->plat->tx_queues_to_use;
-
-	priv->hw->mac->flow_ctrl(priv->hw, duplex, priv->flow_ctrl,
-				 priv->pause, tx_cnt);
-}
-
-/**
  * stmmac_adjust_link - adjusts the link parameters
  * @dev: net device structure
  * Description: this is the helper called by the physical abstraction layer
@@ -782,60 +754,7 @@ static void stmmac_adjust_link(struct net_device *dev)
 	spin_lock_irqsave(&priv->lock, flags);
 
 	if (phydev->link) {
-		u32 ctrl = readl(priv->ioaddr + MAC_CTRL_REG);
-
-		/* Now we make sure that we can be in full duplex mode.
-		 * If not, we operate in half-duplex mode. */
-		if (phydev->duplex != priv->oldduplex) {
-			new_state = 1;
-			if (!(phydev->duplex))
-				ctrl &= ~priv->hw->link.duplex;
-			else
-				ctrl |= priv->hw->link.duplex;
-			priv->oldduplex = phydev->duplex;
-		}
-		/* Flow Control operation */
-		if (phydev->pause)
-			stmmac_mac_flow_ctrl(priv, phydev->duplex);
-
-		if (phydev->speed != priv->speed) {
-			new_state = 1;
-			switch (phydev->speed) {
-			case 1000:
-				if (priv->plat->has_gmac ||
-				    priv->plat->has_gmac4)
-					ctrl &= ~priv->hw->link.port;
-				break;
-			case 100:
-				if (priv->plat->has_gmac ||
-				    priv->plat->has_gmac4) {
-					ctrl |= priv->hw->link.port;
-					ctrl |= priv->hw->link.speed;
-				} else {
-					ctrl &= ~priv->hw->link.port;
-				}
-				break;
-			case 10:
-				if (priv->plat->has_gmac ||
-				    priv->plat->has_gmac4) {
-					ctrl |= priv->hw->link.port;
-					ctrl &= ~(priv->hw->link.speed);
-				} else {
-					ctrl &= ~priv->hw->link.port;
-				}
-				break;
-			default:
-				netif_warn(priv, link, priv->dev,
-					   "broken speed: %d\n", phydev->speed);
-				phydev->speed = SPEED_UNKNOWN;
-				break;
-			}
-			if (phydev->speed != SPEED_UNKNOWN)
-				stmmac_hw_fix_mac_speed(priv);
-			priv->speed = phydev->speed;
-		}
-
-		writel(ctrl, priv->ioaddr + MAC_CTRL_REG);
+		new_state = priv->hw->mac->adjust_link(priv);
 
 		if (!priv->oldlink) {
 			new_state = 1;

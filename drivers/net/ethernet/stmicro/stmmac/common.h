@@ -469,11 +469,14 @@ struct stmmac_dma_ops {
 };
 
 struct mac_device_info;
+struct stmmac_priv;
 
 /* Helpers to program the MAC core */
 struct stmmac_ops {
 	/* MAC core initialization */
 	void (*core_init)(struct mac_device_info *hw, int mtu);
+	/* adjust link */
+	int (*adjust_link)(struct stmmac_priv *priv);
 	/* Enable the MAC RX/TX */
 	void (*set_mac)(void __iomem *ioaddr, bool enable);
 	/* Enable and verify that the IPC module is supported */

@@ -19,6 +19,7 @@
 #include <linux/io.h>
 #include "stmmac_pcs.h"
 #include "dwmac4.h"
+#include "stmmac.h"
 
 static void dwmac4_core_init(struct mac_device_info *hw, int mtu)
 {
@@ -57,6 +58,58 @@ static void dwmac4_core_init(struct mac_device_info *hw, int mtu)
 		value |= GMAC_PCS_IRQ_DEFAULT;
 
 	writel(value, ioaddr + GMAC_INT_EN);
+}
+
+static int dwmac4_adjust_link(struct stmmac_priv *priv)
+{
+	struct net_device *ndev = priv->dev;
+	struct phy_device *phydev = ndev->phydev;
+	int new_state = 0;
+	u32 tx_cnt = priv->plat->tx_queues_to_use;
+	u32 ctrl;
+
+	ctrl = readl(priv->ioaddr + MAC_CTRL_REG);
+
+	if (phydev->duplex != priv->oldduplex) {
+		new_state = 1;
+		if (!(phydev->duplex))
+			ctrl &= ~GMAC_CONFIG_DM;
+		else
+			ctrl |= GMAC_CONFIG_DM;
+		priv->oldduplex = phydev->duplex;
+	}
+
+	if (phydev->pause)
+		priv->hw->mac->flow_ctrl(priv->hw, phydev->duplex, priv->flow_ctrl,
+					 priv->pause, tx_cnt);
+
+	if (phydev->speed != priv->speed) {
+		new_state = 1;
+		switch (phydev->speed) {
+		case 1000:
+			ctrl &= ~GMAC_CONFIG_PS;
+			break;
+		case 100:
+			ctrl |= GMAC_CONFIG_PS;
+			ctrl |= GMAC_CONFIG_FES;
+			break;
+		case 10:
+			ctrl |= GMAC_CONFIG_PS;
+			ctrl |= ~GMAC_CONFIG_FES;
+			break;
+		default:
+			netif_warn(priv, link, priv->dev,
+				   "broken speed: %d\n", phydev->speed);
+			phydev->speed = SPEED_UNKNOWN;
+			break;
+		}
+		if (phydev->speed != SPEED_UNKNOWN && likely(priv->plat->fix_mac_speed))
+			priv->plat->fix_mac_speed(priv->plat->bsp_priv, phydev->speed);
+		priv->speed = phydev->speed;
+	}
+
+	writel(ctrl, priv->ioaddr + MAC_CTRL_REG);
+	return new_state;
 }
 
 static void dwmac4_rx_queue_enable(struct mac_device_info *hw,
@@ -669,6 +722,7 @@ static void dwmac4_debug(void __iomem *ioaddr, struct stmmac_extra_stats *x,
 
 static const struct stmmac_ops dwmac4_ops = {
 	.core_init = dwmac4_core_init,
+	.adjust_link = dwmac4_adjust_link,
 	.set_mac = stmmac_set_mac,
 	.rx_ipc = dwmac4_rx_ipc_enable,
 	.rx_queue_enable = dwmac4_rx_queue_enable,
